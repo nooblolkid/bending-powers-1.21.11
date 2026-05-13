@@ -1,0 +1,37 @@
+{
+	"schemaVersion": 1,
+	"id": "bendingpowers",
+	"version": "${version}",
+	"name": "Bending Powers",
+	"description": "This is an example description! Tell everyone what your mod is about!",
+	"authors": [
+		"Me!"
+	],
+	"contact": {
+		"homepage": "https://fabricmc.net/",
+		"sources": "https://github.com/FabricMC/fabric-example-mod"
+	},
+	"license": "CC0-1.0",
+	"icon": "assets/bendingpowers/icon.png",
+	"environment": "*",
+	"entrypoints": {
+		"main": [
+			"net.drnoki.bendingpowers.BendingPowers"
+		],
+		"fabric-datagen": [
+			"net.drnoki.bendingpowers.BendingPowersDataGenerator"
+		],
+        "client": [
+            "net.drnoki.bendingpowers.BendingPowersClient"
+        ]
+	},
+	"mixins": [
+		"bendingpowers.mixins.json"
+	],
+	"depends": {
+		"fabricloader": ">=0.19.2",
+		"minecraft": "~1.21.11",
+		"java": ">=21",
+		"fabric-api": "*"
+	}
+}
