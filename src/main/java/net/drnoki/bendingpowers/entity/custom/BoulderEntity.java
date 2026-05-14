@@ -1,6 +1,5 @@
 package net.drnoki.bendingpowers.entity.custom;
 
-import net.minecraft.block.AbstractBlock;
 import net.minecraft.block.BlockState;
 import net.minecraft.entity.AnimationState;
 import net.minecraft.entity.Entity;
@@ -18,6 +17,7 @@ import net.minecraft.util.hit.BlockHitResult;
 import net.minecraft.util.hit.EntityHitResult;
 import net.minecraft.util.hit.HitResult;
 import net.minecraft.util.math.BlockPos;
+import net.minecraft.util.math.Box;
 import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.World;
 
@@ -30,8 +30,8 @@ public class BoulderEntity extends ProjectileEntity {
     private int hitCount = 0;
     private final Set<UUID> hitEntities = new HashSet<>();
     private int blocksBroken = 0;
-    private static final float HARDNESS = 4.0f;
-    private static final int MAX_BLOCK_BREAKS = 30;
+    private static final float BLAST_RESISTANCE = 3.0f;
+    private static final int MAX_BLOCK_BREAKS = 40;
 
     public final AnimationState formationAnimationState = new AnimationState();
     public final AnimationState idleAnimationState = new AnimationState();
@@ -47,21 +47,25 @@ public class BoulderEntity extends ProjectileEntity {
         builder.add(STATE, (byte) 0); // Start in Formation state
     }
 
+    public byte getState() {
+        return this.dataTracker.get(STATE);
+    }
+
     @Override
     public void tick() {
         super.tick();
 
-        // State switching logic
         if (!this.getEntityWorld().isClient()) {
             byte state = this.dataTracker.get(STATE);
             if (state == 0 && this.age > FORMATION_TICKS) {
-                this.dataTracker.set(STATE, (byte) 2); // done forming, start flying
-            } else if (state == 2 && this.getVelocity().lengthSquared() > 0.01) {
-                this.dataTracker.set(STATE, (byte) 1); // stopped moving, go idle
+                this.dataTracker.set(STATE, (byte) 2); // done forming, hover and wait for launch
+            } else if (state == 2 && this.getVelocity().lengthSquared() >= 0.01) {
+                this.dataTracker.set(STATE, (byte) 1); // launched, now flying
+            } else if (state == 1 && this.getVelocity().lengthSquared() < 0.01) {
+                this.dataTracker.set(STATE, (byte) 2); // stopped, back to idle
             }
         }
 
-        // Only move + collide + apply gravity once flying
         if (this.dataTracker.get(STATE) == 1) {
             Vec3d vec3d = this.getVelocity();
 
@@ -74,14 +78,46 @@ public class BoulderEntity extends ProjectileEntity {
 
             this.updateRotation();
 
-            if (this.getEntityWorld().getStatesInBox(this.getBoundingBox()).noneMatch(AbstractBlock.AbstractBlockState::isAir)) {
-                this.discard();
-            } else if (this.isTouchingWater()) {
+            if (this.isTouchingWater()) {
                 this.discard();
             } else {
                 this.setVelocity(vec3d.multiply(0.99F));
                 this.applyGravity();
-                this.setPosition(d, e, f);
+                this.setPosition(d, e, f); // move FIRST
+
+                // Now check bounding box at the new position
+                if (!this.getEntityWorld().isClient() && !this.isRemoved()) {
+                    boolean hitHardBlock = false;
+                    Box box = this.getBoundingBox();
+                    BlockPos.Mutable mutablePos = new BlockPos.Mutable();
+
+                    outer:
+                    for (int x = (int) Math.floor(box.minX); x <= (int) Math.floor(box.maxX); x++) {
+                        for (int y = (int) Math.floor(box.minY); y <= (int) Math.floor(box.maxY); y++) {
+                            for (int z = (int) Math.floor(box.minZ); z <= (int) Math.floor(box.maxZ); z++) {
+                                mutablePos.set(x, y, z);
+                                BlockState blockState = this.getEntityWorld().getBlockState(mutablePos);
+
+                                if (blockState.isAir()) continue;
+
+                                float blastResistance = blockState.getBlock().getBlastResistance();
+                                boolean isSoft = blastResistance >= 0 && blastResistance <= BLAST_RESISTANCE;
+
+                                if (isSoft && blocksBroken < MAX_BLOCK_BREAKS) {
+                                    this.getEntityWorld().breakBlock(mutablePos.toImmutable(), true, this, 512);
+                                    blocksBroken++;
+                                } else {
+                                    hitHardBlock = true;
+                                    break outer;
+                                }
+                            }
+                        }
+                    }
+
+                    if (hitHardBlock || blocksBroken >= MAX_BLOCK_BREAKS) {
+                        this.explodeAndDiscard();
+                    }
+                }
             }
         }
 
@@ -147,19 +183,14 @@ public class BoulderEntity extends ProjectileEntity {
         super.onBlockHit(blockHitResult);
         if (this.getEntityWorld().isClient()) return;
 
-        BlockPos blockPos = blockHitResult.getBlockPos();
-        BlockState blockState = this.getEntityWorld().getBlockState(blockPos);
-        float hardness = blockState.getHardness(this.getEntityWorld(), blockPos);
+        BlockState blockState = this.getEntityWorld().getBlockState(blockHitResult.getBlockPos());
+        float blastResistance = blockState.getBlock().getBlastResistance();
+        boolean isSoft = blastResistance >= 0 && blastResistance <= BLAST_RESISTANCE;
 
-        // hardness < 0 means indestructible (e.g. bedrock)
-        boolean isSoftEnough = hardness >= 0 && hardness < HARDNESS;
-
-        if (isSoftEnough && blocksBroken < MAX_BLOCK_BREAKS) {
-            this.getEntityWorld().breakBlock(blockPos, true); // true = drop items
+        if (isSoft && blocksBroken < MAX_BLOCK_BREAKS) {
+            this.getEntityWorld().breakBlock(blockHitResult.getBlockPos(), true, this, 512);
             blocksBroken++;
-            // Don't discard — boulder punches through and keeps going
         } else {
-            // Too hard, indestructible, or break limit reached
             this.explodeAndDiscard();
         }
     }
