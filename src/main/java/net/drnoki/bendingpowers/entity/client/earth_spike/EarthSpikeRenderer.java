@@ -11,6 +11,7 @@ import net.minecraft.client.render.item.ItemRenderer;
 import net.minecraft.client.render.state.CameraRenderState;
 import net.minecraft.client.util.math.MatrixStack;
 import net.minecraft.util.Identifier;
+import net.minecraft.util.math.RotationAxis;
 
 import java.util.List;
 
@@ -33,6 +34,8 @@ public class EarthSpikeRenderer extends EntityRenderer<EarthSpikeEntity, EarthSp
         matrixStack.push();
         matrixStack.scale(1.5f, 1.5f, 1.5f);
 
+        matrixStack.multiply(RotationAxis.POSITIVE_Y.rotationDegrees(state.yaw));
+
         List<RenderLayer> list = ItemRenderer.getGlintRenderLayers(this.model.getLayer(TEXTURE), false, false);
 
         for (int i = 0; i < list.size(); i++) {
@@ -54,6 +57,16 @@ public class EarthSpikeRenderer extends EntityRenderer<EarthSpikeEntity, EarthSp
         matrixStack.pop();
 
         super.render(state, matrixStack, orderedRenderCommandQueue, cameraRenderState);
+    }
+
+    @Override
+    public void updateRenderState(EarthSpikeEntity entity, EarthSpikeRenderState state, float tickDelta) {
+        super.updateRenderState(entity, state, tickDelta);
+
+        // Copy the rotation from the entity to our state.
+        // If your mappings have a getLerpedYaw(tickDelta), use that for smoothness!
+        // Otherwise, getYaw() will work just fine.
+        state.yaw = entity.getYaw();
     }
 
 }

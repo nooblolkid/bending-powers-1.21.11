@@ -25,7 +25,7 @@ public class ModEntities {
     public static final EntityType<EarthSpikeEntity> EARTH_SPIKE = Registry.register(Registries.ENTITY_TYPE,
             Identifier.of(BendingPowers.MOD_ID, "earth_spike"),
             EntityType.Builder.create(EarthSpikeEntity::new, SpawnGroup.MISC)
-                    .dimensions(1.5f, 1.5f).build(EARTH_SPIKE_KEY));
+                    .dimensions(0.4f, 1.8f).build(EARTH_SPIKE_KEY));
 
     public static void registerModEntities() {
         BendingPowers.LOGGER.info("Registering Mod Entities for " + BendingPowers.MOD_ID);
