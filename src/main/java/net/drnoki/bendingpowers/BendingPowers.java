@@ -28,10 +28,6 @@ public class BendingPowers implements ModInitializer {
 	public void onInitialize() {
         ModEntities.registerModEntities();
 
-
-
-
-
         UseBlockCallback.EVENT.register((player, world, hand, hitResult) -> {
 
             // Only main hand, only empty hand, only with the tag
