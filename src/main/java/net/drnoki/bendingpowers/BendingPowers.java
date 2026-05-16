@@ -18,6 +18,7 @@ import net.minecraft.util.Hand;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Box;
 import net.minecraft.util.math.Vec3d;
+import net.minecraft.registry.RegistryKey;
 import net.minecraft.world.World;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
@@ -95,22 +96,30 @@ public class BendingPowers implements ModInitializer {
             });
 
             // Process Pending Spikes (Delayed Spawning)
+            // Only process spikes belonging to THIS dimension so multi-world ticking
+            // doesn't decrement (and consume) spikes meant for a different world.
             PENDING_SPIKES.removeIf(pending -> {
+                if (!pending.dimension.equals(serverWorld.getRegistryKey())) return false;
+
                 pending.ticksRemaining--;
                 if (pending.ticksRemaining > 0) return false;
 
-                ServerPlayerEntity player = server.getPlayerManager().getPlayer(pending.playerUuid);
                 EarthSpikeEntity spike = new EarthSpikeEntity(ModEntities.EARTH_SPIKE, serverWorld);
-
-                // --- APPLY ROTATION HERE ---
                 spike.setPosition(pending.pos.x, pending.pos.y, pending.pos.z);
+                // Apply the player's yaw so the spike faces the direction they were looking
                 spike.setYaw(pending.yaw);
-                spike.lastYaw = pending.yaw; // Prevents the model from "snapping" from North
-
+                spike.setHeadYaw(pending.yaw);
                 spike.setOwnerUuid(pending.playerUuid);
                 serverWorld.spawnEntity(spike);
 
-                // ... (rest of your damage bridge logic) ...
+                // Line sweep between spikes using the stored facing direction
+                Box lineSweep = new Box(pending.pos, pending.pos.add(pending.facing.multiply(2.5)))
+                        .expand(0.5, 0.5, 0.5);
+
+                serverWorld.getOtherEntities(spike, lineSweep, e ->
+                        e instanceof LivingEntity && !e.getUuid().equals(pending.playerUuid)
+                ).forEach(e -> e.damage(serverWorld, serverWorld.getDamageSources().generic(), 4.0f));
+
                 return true;
             });
         });
@@ -118,19 +127,15 @@ public class BendingPowers implements ModInitializer {
 
     private static void queueEarthSpikes(ServerPlayerEntity player, ServerWorld world, GestureData gesture) {
         Vec3d facing = Vec3d.fromPolar(0, gesture.yaw);
-        Vec3d lastPos = null;
 
-        for (int i = 0; i < 4; i++) {
-            // Distance: 3.0, 6.0, 9.0 blocks ahead
-            double distance = 3.0 + (i * 3.0);
+        for (int i = 0; i < 3; i++) {
+            double distance = 3.5 + (i * 3.5);
             Vec3d targetPos = player.getEntityPos().add(facing.multiply(distance));
-
             Vec3d groundPos = findGround(world, targetPos);
 
             if (groundPos != null) {
-                // Pass the gesture.yaw to each spike
-                PENDING_SPIKES.add(new PendingSpike(player.getUuid(), groundPos, i * 5, lastPos, gesture.yaw));
-                lastPos = groundPos;
+                // Pass gesture.yaw so each spike is oriented to match the player's facing direction
+                PENDING_SPIKES.add(new PendingSpike(player.getUuid(), world.getRegistryKey(), groundPos, facing, gesture.yaw, i * 7));
             }
         }
     }
@@ -138,10 +143,10 @@ public class BendingPowers implements ModInitializer {
     @Nullable
     private static Vec3d findGround(ServerWorld world, Vec3d pos) {
         BlockPos blockPos = BlockPos.ofFloored(pos);
-        // Expand search to 10 blocks up/down to handle 1.21 terrain generation better
         for (int dy = 10; dy >= -10; dy--) {
             BlockPos check = blockPos.add(0, dy, 0);
-            if (world.getBlockState(check).isSolidBlock(world, check) && world.getBlockState(check.up()).isAir()) {
+            // Use !isAir() instead of isSolidBlock() so slabs, paths, etc. all count as ground
+            if (!world.getBlockState(check).isAir() && world.getBlockState(check.up()).isAir()) {
                 return Vec3d.ofCenter(check.up());
             }
         }
@@ -176,17 +181,19 @@ public class BendingPowers implements ModInitializer {
 
     private static class PendingSpike {
         final UUID playerUuid;
+        final RegistryKey<World> dimension;
         final Vec3d pos;
-        final Vec3d previousPos;
-        final float yaw; // Added: Stores the rotation
+        final Vec3d facing;
+        final float yaw; // stored so the spike entity can be rotated to match
         int ticksRemaining;
 
-        PendingSpike(UUID playerUuid, Vec3d pos, int delay, @Nullable Vec3d previousPos, float yaw) {
+        PendingSpike(UUID playerUuid, RegistryKey<World> dimension, Vec3d pos, Vec3d facing, float yaw, int delay) {
             this.playerUuid = playerUuid;
+            this.dimension = dimension;
             this.pos = pos;
+            this.facing = facing;
+            this.yaw = yaw;
             this.ticksRemaining = delay;
-            this.previousPos = previousPos;
-            this.yaw = yaw; // Assign the rotation
         }
     }
 }
