@@ -34,7 +34,7 @@ public class EarthSpikeRenderer extends EntityRenderer<EarthSpikeEntity, EarthSp
         matrixStack.push();
         matrixStack.scale(1.5f, 1.5f, 1.5f);
 
-        matrixStack.multiply(RotationAxis.NEGATIVE_Y.rotationDegrees(state.yaw + 180));
+        matrixStack.multiply(RotationAxis.NEGATIVE_Y.rotationDegrees(state.yaw));
 
         List<RenderLayer> list = ItemRenderer.getGlintRenderLayers(this.model.getLayer(TEXTURE), false, false);
 
