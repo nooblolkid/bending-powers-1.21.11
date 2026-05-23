@@ -62,11 +62,8 @@ public class EarthSpikeRenderer extends EntityRenderer<EarthSpikeEntity, EarthSp
     @Override
     public void updateRenderState(EarthSpikeEntity entity, EarthSpikeRenderState state, float tickDelta) {
         super.updateRenderState(entity, state, tickDelta);
-
-        // Copy the rotation from the entity to our state.
-        // If your mappings have a getLerpedYaw(tickDelta), use that for smoothness!
-        // Otherwise, getYaw() will work just fine.
         state.yaw = entity.getYaw();
+        state.emersionAnimationState.copyFrom(entity.emergeAnimationState);
     }
 
 }

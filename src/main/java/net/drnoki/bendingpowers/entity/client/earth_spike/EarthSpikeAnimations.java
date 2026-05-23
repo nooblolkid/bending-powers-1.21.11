@@ -6,7 +6,7 @@ import net.minecraft.client.render.entity.animation.Keyframe;
 import net.minecraft.client.render.entity.animation.Transformation;
 
 public class EarthSpikeAnimations {
-    public static final AnimationDefinition eruption = AnimationDefinition.Builder.create(1.0F)
+    public static final AnimationDefinition EMERSION = AnimationDefinition.Builder.create(1.0F)
             .addBoneAnimation("first", new Transformation(Transformation.Targets.SCALE,
                     new Keyframe(0.0F, AnimationHelper.createScalingVector(1.0F, 1.0F, 1.0F), Transformation.Interpolations.LINEAR)
             ))

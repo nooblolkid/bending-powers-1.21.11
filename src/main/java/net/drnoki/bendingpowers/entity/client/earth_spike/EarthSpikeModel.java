@@ -18,7 +18,7 @@ public class EarthSpikeModel extends EntityModel<EarthSpikeRenderState> {
 
     private final Animation emersionAnimation;
 
-    public EarthSpikeModel(ModelPart root, Animation emersionAnimation) {
+    public EarthSpikeModel(ModelPart root) {
         super(root);
         this.root = root.getChild("root");
         this.first = this.root.getChild("first");
@@ -27,7 +27,7 @@ public class EarthSpikeModel extends EntityModel<EarthSpikeRenderState> {
         this.fourth = this.root.getChild("fourth");
         this.fifth = this.root.getChild("fifth");
 
-        this.emersionAnimation = EarthSpikeAnimations
+        this.emersionAnimation = EarthSpikeAnimations.EMERSION.createAnimation(root);
     }
     public static TexturedModelData getTexturedModelData() {
         ModelData modelData = new ModelData();
@@ -44,5 +44,13 @@ public class EarthSpikeModel extends EntityModel<EarthSpikeRenderState> {
 
         ModelPartData fifth = root.addChild("fifth", ModelPartBuilder.create().uv(64, 0).cuboid(-7.0F, -92.0F, -5.0F, 8.0F, 31.0F, 8.0F, new Dilation(0.0F)), ModelTransform.origin(2.0F, -9.0F, 0.0F));
         return TexturedModelData.of(modelData, 128, 128);
+    }
+
+    @Override
+    public void setAngles(EarthSpikeRenderState state) {
+        super.setAngles(state);
+        this.root.traverse().forEach(ModelPart::resetTransform);
+
+        this.emersionAnimation.apply(state.emersionAnimationState, state.age);
     }
 }

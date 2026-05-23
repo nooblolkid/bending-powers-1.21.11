@@ -1,5 +1,6 @@
 package net.drnoki.bendingpowers.entity.custom;
 
+import net.drnoki.bendingpowers.sound.ModSounds;
 import net.minecraft.entity.AnimationState;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityType;
@@ -7,6 +8,7 @@ import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.damage.DamageSource;
 import net.minecraft.entity.data.DataTracker;
 import net.minecraft.server.world.ServerWorld;
+import net.minecraft.sound.SoundCategory;
 import net.minecraft.storage.ReadView;
 import net.minecraft.storage.WriteView;
 import net.minecraft.util.math.Box;
@@ -28,13 +30,15 @@ public class EarthSpikeEntity extends Entity {
     public EarthSpikeEntity(EntityType<?> type, World world) {
         super(type, world);
         this.noClip = true;
+        if (world.isClient()) {
+            emergeAnimationState.start(0);
+        }
     }
 
     public void setOwnerUuid(@Nullable UUID uuid) { this.ownerUuid = uuid; }
 
     @Override
     protected void initDataTracker(DataTracker.Builder builder) {
-        // Add any tracked data here if needed for client-side syncing
     }
 
     @Override
@@ -42,11 +46,20 @@ public class EarthSpikeEntity extends Entity {
         super.tick();
 
         if (this.getEntityWorld().isClient()) {
-            if (this.age == 1) emergeAnimationState.start(this.age);
             return;
         }
 
-        // Damage when fully emerged
+        if (this.age == 1) {
+            this.getEntityWorld().playSound(
+                    null,
+                    this.getX(), this.getY(), this.getZ(),
+                    ModSounds.EARTH_SPIKE_EMERSION,
+                    SoundCategory.HOSTILE,
+                    1.0f,
+                    1.0f
+            );
+        }
+
         if (this.age == EMERGE_TICKS && !hasDamaged) {
             damageNearby();
             hasDamaged = true;
@@ -68,12 +81,10 @@ public class EarthSpikeEntity extends Entity {
         this.getEntityWorld().getOtherEntities(this, damageBox,
                 e -> e instanceof LivingEntity && !e.getUuid().equals(ownerUuid)
         ).forEach(e -> {
-            // Using the signature from image_ae5e04.png
             e.damage(serverWorld, serverWorld.getDamageSources().magic(), DAMAGE);
         });
     }
 
-    // --- NEW DATA METHODS FROM image_ae5e04.png ---
 
     @Override
     public void writeCustomData(WriteView view) {

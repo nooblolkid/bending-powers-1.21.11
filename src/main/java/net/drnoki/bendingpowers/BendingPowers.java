@@ -3,6 +3,7 @@ package net.drnoki.bendingpowers;
 import net.drnoki.bendingpowers.entity.ModEntities;
 import net.drnoki.bendingpowers.entity.custom.BoulderEntity;
 import net.drnoki.bendingpowers.entity.custom.EarthSpikeEntity;
+import net.drnoki.bendingpowers.sound.ModSounds;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fabricmc.fabric.api.event.player.AttackBlockCallback;
@@ -37,6 +38,7 @@ public class BendingPowers implements ModInitializer {
     @Override
     public void onInitialize() {
         ModEntities.registerModEntities();
+        ModSounds.registerSounds();
 
         // --- GESTURE START & BOULDER SPAWN ---
         UseBlockCallback.EVENT.register((player, world, hand, hitResult) -> {
