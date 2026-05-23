@@ -2,6 +2,7 @@ package net.drnoki.bendingpowers.entity.client.earth_spike;
 
 import net.drnoki.bendingpowers.BendingPowers;
 import net.minecraft.client.model.*;
+import net.minecraft.client.render.entity.animation.Animation;
 import net.minecraft.client.render.entity.model.EntityModel;
 import net.minecraft.client.render.entity.model.EntityModelLayer;
 import net.minecraft.util.Identifier;
@@ -14,7 +15,10 @@ public class EarthSpikeModel extends EntityModel<EarthSpikeRenderState> {
     private final ModelPart third;
     private final ModelPart fourth;
     private final ModelPart fifth;
-    public EarthSpikeModel(ModelPart root) {
+
+    private final Animation emersionAnimation;
+
+    public EarthSpikeModel(ModelPart root, Animation emersionAnimation) {
         super(root);
         this.root = root.getChild("root");
         this.first = this.root.getChild("first");
@@ -22,6 +26,8 @@ public class EarthSpikeModel extends EntityModel<EarthSpikeRenderState> {
         this.third = this.root.getChild("third");
         this.fourth = this.root.getChild("fourth");
         this.fifth = this.root.getChild("fifth");
+
+        this.emersionAnimation = EarthSpikeAnimations
     }
     public static TexturedModelData getTexturedModelData() {
         ModelData modelData = new ModelData();
