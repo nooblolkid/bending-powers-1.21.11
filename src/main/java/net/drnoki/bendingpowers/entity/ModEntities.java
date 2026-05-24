@@ -3,6 +3,7 @@ package net.drnoki.bendingpowers.entity;
 import net.drnoki.bendingpowers.BendingPowers;
 import net.drnoki.bendingpowers.entity.custom.BoulderEntity;
 import net.drnoki.bendingpowers.entity.custom.EarthSpikeEntity;
+import net.drnoki.bendingpowers.entity.custom.RockEntity;
 import net.minecraft.entity.EntityType;
 import net.minecraft.entity.SpawnGroup;
 import net.minecraft.registry.Registries;
@@ -17,6 +18,8 @@ public class ModEntities {
             RegistryKey.of(RegistryKeys.ENTITY_TYPE, Identifier.of(BendingPowers.MOD_ID, "boulder"));
     private static final RegistryKey<EntityType<?>> EARTH_SPIKE_KEY =
             RegistryKey.of(RegistryKeys.ENTITY_TYPE, Identifier.of(BendingPowers.MOD_ID, "earth_spike"));
+    private static final RegistryKey<EntityType<?>> ROCK_KEY =
+            RegistryKey.of(RegistryKeys.ENTITY_TYPE, Identifier.of(BendingPowers.MOD_ID, "rock"));
 
     public static final EntityType<BoulderEntity> BOULDER = Registry.register(Registries.ENTITY_TYPE,
             Identifier.of(BendingPowers.MOD_ID, "boulder"),
@@ -26,6 +29,10 @@ public class ModEntities {
             Identifier.of(BendingPowers.MOD_ID, "earth_spike"),
             EntityType.Builder.create(EarthSpikeEntity::new, SpawnGroup.MISC)
                     .dimensions(0.4f, 1.8f).build(EARTH_SPIKE_KEY));
+    public static final EntityType<RockEntity> ROCK = Registry.register(Registries.ENTITY_TYPE,
+            Identifier.of(BendingPowers.MOD_ID, "rock"),
+            EntityType.Builder.create(RockEntity::new, SpawnGroup.MISC)
+                    .dimensions(0.5f, 0.5f).build(ROCK_KEY));
 
     public static void registerModEntities() {
         BendingPowers.LOGGER.info("Registering Mod Entities for " + BendingPowers.MOD_ID);
