@@ -3,14 +3,17 @@ package net.drnoki.bendingpowers;
 import net.drnoki.bendingpowers.entity.ModEntities;
 import net.drnoki.bendingpowers.entity.custom.BoulderEntity;
 import net.drnoki.bendingpowers.entity.custom.EarthSpikeEntity;
+import net.drnoki.bendingpowers.entity.custom.RockEntity;
 import net.drnoki.bendingpowers.sound.ModSounds;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fabricmc.fabric.api.event.player.AttackBlockCallback;
 import net.fabricmc.fabric.api.event.player.AttackEntityCallback;
 import net.fabricmc.fabric.api.event.player.UseBlockCallback;
+import net.fabricmc.fabric.api.event.player.UseItemCallback;
 import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.player.PlayerEntity;
+import net.minecraft.entity.projectile.ArrowEntity;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.server.world.ServerWorld;
@@ -34,6 +37,13 @@ public class BendingPowers implements ModInitializer {
     // Gesture and Spawning Storage
     private static final Map<UUID, GestureData> SPIKE_GESTURES = new HashMap<>();
     private static final List<PendingSpike> PENDING_SPIKES = new ArrayList<>();
+    private static final Map<UUID, ArrayDeque<Float>>  PITCH_HISTORY  = new HashMap<>();
+    private static final Map<UUID, List<RockEntity>> PLAYER_ROCKS = new HashMap<>();
+    private static final Map<UUID, Integer> ROCK_COOLDOWNS = new HashMap<>();
+    private static final int   PITCH_WINDOW   = 15;  // ticks of history to keep
+    private static final float MIN_PITCH_DROP = 55f; // degrees upward needed to trigger
+    private static final int   ROCK_COOLDOWN  = 60;  // ticks before re-triggering (3 sec)
+
 
     @Override
     public void onInitialize() {
@@ -67,7 +77,6 @@ public class BendingPowers implements ModInitializer {
                 world.spawnEntity(boulder);
                 return ActionResult.SUCCESS;
             }
-
             return ActionResult.PASS;
         });
 
@@ -124,6 +133,43 @@ public class BendingPowers implements ModInitializer {
 
                 return true;
             });
+
+            if (!serverWorld.getRegistryKey().equals(World.OVERWORLD)) return;
+
+// --- ROCK COOLDOWN TICK-DOWN ---
+            ROCK_COOLDOWNS.replaceAll((uuid, ticks) -> ticks - 1);
+            ROCK_COOLDOWNS.entrySet().removeIf(e -> e.getValue() <= 0);
+
+// --- ROCK PITCH GESTURE (no click needed) ---
+            for (ServerPlayerEntity player : server.getPlayerManager().getPlayerList()) {
+                if (!player.getCommandTags().contains("earth_power")) continue;
+                if (player.isSneaking()) continue;  // sneaking = spike/boulder, not rocks
+
+                UUID uuid = player.getUuid();
+
+                // Skip if rocks are already up or on cooldown
+                boolean rocksAlive = PLAYER_ROCKS.getOrDefault(uuid, List.of())
+                        .stream().anyMatch(r -> !r.isRemoved());
+                if (rocksAlive || ROCK_COOLDOWNS.containsKey(uuid)) continue;
+
+                // Add current pitch to rolling window
+                ArrayDeque<Float> history = PITCH_HISTORY.computeIfAbsent(uuid, k -> new ArrayDeque<>());
+                history.addLast(player.getPitch());
+                if (history.size() > PITCH_WINDOW) history.removeFirst();
+
+                if (history.size() < 5) continue; // not enough data yet
+
+                // Highest pitch seen in the window (most downward look)
+                // vs current pitch – delta = how far up they've swiped since then
+                float maxPitch = history.stream().reduce(Float.MIN_VALUE, Math::max);
+                float delta    = maxPitch - player.getPitch(); // positive = looked upward
+
+                if (delta >= MIN_PITCH_DROP) {
+                    spawnRockRing(player, serverWorld);
+                    ROCK_COOLDOWNS.put(uuid, ROCK_COOLDOWN);
+                    history.clear(); // reset so it can't double-fire
+                }
+            }
         });
     }
 
@@ -153,6 +199,28 @@ public class BendingPowers implements ModInitializer {
             }
         }
         return null;
+    }
+
+    private static void spawnRockRing(ServerPlayerEntity player, ServerWorld world) {
+        final int    COUNT       = 24;
+        final double RADIUS      = 3.0;
+        final double IDLE_HEIGHT = 1.2;
+        final int    DELAY_STEP  = 2;  // ticks between each rock rising
+
+        List<RockEntity> spawned = new ArrayList<>();
+
+        for (int i = 0; i < COUNT; i++) {
+            double angle   = (Math.PI * 2.0 / COUNT) * i;
+            double rx      = player.getX() + Math.cos(angle) * RADIUS;
+            double rz      = player.getZ() + Math.sin(angle) * RADIUS;
+            Vec3d  ringPos = new Vec3d(rx, player.getY(), rz);
+
+            RockEntity rock = new RockEntity(world, player, ringPos, IDLE_HEIGHT, i * DELAY_STEP);
+            world.spawnEntity(rock);
+            spawned.add(rock);
+        }
+        // Store the rock list so we can launch them later
+        PLAYER_ROCKS.put(player.getUuid(), spawned);
     }
 
     private static ActionResult handleBoulderLaunch(PlayerEntity player, World world, Hand hand) {

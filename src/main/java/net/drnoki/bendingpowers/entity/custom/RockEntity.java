@@ -1,11 +1,12 @@
 package net.drnoki.bendingpowers.entity.custom;
 
 import net.drnoki.bendingpowers.entity.ModEntities;
-import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityType;
 import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.damage.DamageSource;
 import net.minecraft.entity.data.DataTracker;
+import net.minecraft.entity.data.TrackedData;
+import net.minecraft.entity.data.TrackedDataHandlerRegistry;
 import net.minecraft.entity.projectile.ProjectileEntity;
 import net.minecraft.entity.projectile.ProjectileUtil;
 import net.minecraft.server.world.ServerWorld;
@@ -23,7 +24,7 @@ public class RockEntity extends ProjectileEntity {
     // ── Tuning ──────────────────────────────────────────────────────────
     private static final int    RISE_TICKS   = 18;   // ticks to rise from ground
     private static final double LAUNCH_SPEED = 1.8;  // blocks per tick when fired
-    private static final float  DAMAGE       = 6.0f; // half-hearts on hit
+    private static final float  DAMAGE       = 1.0f; // half-hearts on hit
     private static final double HIT_RADIUS   = 1.5;  // aoe radius at target pos
     private static final double ARRIVE_DIST  = 0.8;  // "close enough" threshold
 
@@ -39,6 +40,51 @@ public class RockEntity extends ProjectileEntity {
     private Vec3d scatterPos = null; // randomised ground start point
     private Vec3d idlePos    = null; // fixed hover position in the ring
     private Vec3d targetPos  = null; // where it flies when launched
+
+    private static final TrackedData<Float> IDLE_X =
+            DataTracker.registerData(RockEntity.class, TrackedDataHandlerRegistry.FLOAT);
+    private static final TrackedData<Float> IDLE_Y =
+            DataTracker.registerData(RockEntity.class, TrackedDataHandlerRegistry.FLOAT);
+    private static final TrackedData<Float> IDLE_Z =
+            DataTracker.registerData(RockEntity.class, TrackedDataHandlerRegistry.FLOAT);
+    private static final TrackedData<Byte> ROCK_STATE =
+            DataTracker.registerData(RockEntity.class, TrackedDataHandlerRegistry.BYTE);
+
+    // ── Register them in initDataTracker ─────────────────────────────────
+    @Override
+    protected void initDataTracker(DataTracker.Builder builder) {
+        builder.add(IDLE_X,     0f);
+        builder.add(IDLE_Y,     0f);
+        builder.add(IDLE_Z,     0f);
+        builder.add(ROCK_STATE, (byte) 0); // 0=RISING, 1=IDLE, 2=LAUNCHED
+    }
+
+    // ── Helper: read idlePos back from tracker (safe on client) ──────────
+    private Vec3d getTrackedIdlePos() {
+        return new Vec3d(
+                this.dataTracker.get(IDLE_X),
+                this.dataTracker.get(IDLE_Y),
+                this.dataTracker.get(IDLE_Z)
+        );
+    }
+
+    // ── Write idlePos into tracker whenever it's set ─────────────────────
+    // Call this in your spawn constructor after setting idlePos:
+    private void syncIdlePos() {
+        this.dataTracker.set(IDLE_X, (float) idlePos.x);
+        this.dataTracker.set(IDLE_Y, (float) idlePos.y);
+        this.dataTracker.set(IDLE_Z, (float) idlePos.z);
+    }
+
+    // ── Update ROCK_STATE tracker whenever state changes ─────────────────
+    private void syncState() {
+        byte b = switch (state) {
+            case RISING   -> (byte) 0;
+            case IDLE     -> (byte) 1;
+            case LAUNCHED -> (byte) 2;
+        };
+        this.dataTracker.set(ROCK_STATE, b);
+    }
 
     // ── Constructors ─────────────────────────────────────────────────────
 
@@ -56,12 +102,12 @@ public class RockEntity extends ProjectileEntity {
      * @param idleHeight  How high above ringPos.y the rock should hover.
      * @param spawnDelay  Ticks to wait before rising (use index * 2 for stagger).
      */
-    protected RockEntity(
-            World        world,
+    public RockEntity(
+            World world,
             LivingEntity owner,
-            Vec3d        ringPos,
-            double       idleHeight,
-            int          spawnDelay
+            Vec3d ringPos,
+            double idleHeight,
+            int spawnDelay
     ) {
         super(ModEntities.ROCK, world);
         this.setOwner(owner);
@@ -69,6 +115,8 @@ public class RockEntity extends ProjectileEntity {
 
         // Idle position: exact ring spot, elevated
         this.idlePos = new Vec3d(ringPos.x, ringPos.y + idleHeight, ringPos.z);
+        syncIdlePos(); // ← add this
+        syncState();
 
         // Scatter: random horizontal offset that converges to idlePos during rise
         double sx = ringPos.x + (world.getRandom().nextDouble() - 0.5) * 2.0;
@@ -78,9 +126,6 @@ public class RockEntity extends ProjectileEntity {
         this.setNoGravity(true);
         this.setPosition(scatterPos.x, scatterPos.y, scatterPos.z);
     }
-
-    @Override
-    protected void initDataTracker(DataTracker.Builder builder) { }
 
     // ── Tick ─────────────────────────────────────────────────────────────
 
@@ -99,41 +144,55 @@ public class RockEntity extends ProjectileEntity {
     }
 
     private void tickRising() {
+        // Get idlePos from the tracker – works on both server AND client
+        Vec3d idle = getTrackedIdlePos();
+
+        // If tracker hasn't been populated yet (shouldn't happen but safe guard)
+           if (idle.x == 0 && idle.y == 0 && idle.z == 0) {
+                   this.discard();
+                   return;
+           }
+
+
         riseTick++;
 
         if (riseTick >= RISE_TICKS) {
-            // Snap exactly to idle pos and stop
-            this.setPosition(idlePos.x, idlePos.y, idlePos.z);
+            this.setPosition(idle.x, idle.y, idle.z);
             this.setVelocity(Vec3d.ZERO);
             state = State.IDLE;
+            syncState(); // ← tell client we're now IDLE
             return;
         }
 
-        float t      = (float) riseTick / RISE_TICKS;
-        float eased  = easeOutCubic(t);
+        float t     = (float) riseTick / RISE_TICKS;
+        float eased = easeOutCubic(t);
 
-        // X/Z: scatter start → idle ring position
-        double x = scatterPos.x + (idlePos.x - scatterPos.x) * eased;
-        double z = scatterPos.z + (idlePos.z - scatterPos.z) * eased;
+        // On the client scatterPos may be null – fall back to idle position
+        // so the rock at least appears at the right spot even without scatter animation
+        Vec3d scatter = scatterPos != null ? scatterPos : idle;
 
-        // Y: ground level → idle height, with a slight overshoot then settle
-        double y = scatterPos.y + (idlePos.y - scatterPos.y) * easeOutBack(t);
+        double x = scatter.x + (idle.x - scatter.x) * eased;
+        double z = scatter.z + (idle.z - scatter.z) * eased;
+        double y = scatter.y + (idle.y - scatter.y) * easeOutBack(t);
 
         this.setVelocity(Vec3d.ZERO);
         this.setPosition(x, y, z);
     }
 
     private void tickIdle() {
-        // Rock stays exactly at its assigned ring position.
-        // We still call setPosition every tick so packet updates keep clients in sync.
-        this.setVelocity(Vec3d.ZERO);
-        this.setPosition(idlePos.x, idlePos.y, idlePos.z);
+        // Koristimo isključivo poziciju iz trackera jer je 'idlePos' null na klijentskoj strani
+        Vec3d idle = getTrackedIdlePos();
 
-        // TODO: idle bob/rotation animation hook goes here later
+        this.setVelocity(Vec3d.ZERO);
+        this.setPosition(idle.x, idle.y, idle.z);
     }
 
     private void tickLaunched() {
-        if (targetPos == null) { this.discard(); return; }
+        if (targetPos == null) {
+            // Client doesn't know the target yet — just hold position until it does
+            this.setVelocity(Vec3d.ZERO);
+            return;
+        }
 
         Vec3d toTarget = targetPos.subtract(this.getEntityPos());
         if (toTarget.length() < ARRIVE_DIST) {
@@ -208,7 +267,13 @@ public class RockEntity extends ProjectileEntity {
         this.state     = State.LAUNCHED;
     }
 
-    public State getState() { return state; }
+    public State getState() {
+        return switch (this.dataTracker.get(ROCK_STATE)) {
+            case 1  -> State.IDLE;
+            case 2  -> State.LAUNCHED;
+            default -> State.RISING;
+        };
+    }
 
     // ── Serialization ─────────────────────────────────────────────────────
 

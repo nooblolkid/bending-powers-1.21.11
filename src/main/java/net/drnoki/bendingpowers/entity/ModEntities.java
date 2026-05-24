@@ -31,7 +31,7 @@ public class ModEntities {
                     .dimensions(0.4f, 1.8f).build(EARTH_SPIKE_KEY));
     public static final EntityType<RockEntity> ROCK = Registry.register(Registries.ENTITY_TYPE,
             Identifier.of(BendingPowers.MOD_ID, "rock"),
-            EntityType.Builder.create(RockEntity::new, SpawnGroup.MISC)
+            EntityType.Builder.<RockEntity>create(RockEntity::new, SpawnGroup.MISC)
                     .dimensions(0.5f, 0.5f).build(ROCK_KEY));
 
     public static void registerModEntities() {
