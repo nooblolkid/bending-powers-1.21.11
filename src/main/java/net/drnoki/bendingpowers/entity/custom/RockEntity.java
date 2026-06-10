@@ -19,6 +19,8 @@ import net.minecraft.util.math.Box;
 import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.World;
 
+import java.util.Comparator;
+
 public class RockEntity extends ProjectileEntity {
 
     // ── Tuning ──────────────────────────────────────────────────────────
@@ -144,6 +146,7 @@ public class RockEntity extends ProjectileEntity {
     }
 
     private void tickRising() {
+        if (this.getEntityWorld().isClient()) return;
         // Get idlePos from the tracker – works on both server AND client
         Vec3d idle = getTrackedIdlePos();
 
@@ -180,36 +183,41 @@ public class RockEntity extends ProjectileEntity {
     }
 
     private void tickIdle() {
-        // Koristimo isključivo poziciju iz trackera jer je 'idlePos' null na klijentskoj strani
-        Vec3d idle = getTrackedIdlePos();
-
+        if (this.getEntityWorld().isClient()) return;
         this.setVelocity(Vec3d.ZERO);
+        Vec3d idle = getTrackedIdlePos();
         this.setPosition(idle.x, idle.y, idle.z);
     }
 
     private void tickLaunched() {
-        if (targetPos == null) {
-            // Client doesn't know the target yet — just hold position until it does
-            this.setVelocity(Vec3d.ZERO);
-            return;
-        }
+        if (this.getEntityWorld().isClient()) return;
+
+        if (targetPos == null) { this.discard(); return; }
 
         Vec3d toTarget = targetPos.subtract(this.getEntityPos());
-        if (toTarget.length() < ARRIVE_DIST) {
+        double dist    = toTarget.length();
+
+        if (dist < ARRIVE_DIST) {
             onArriveAtTarget();
             return;
         }
 
+        // Set velocity instead of setPosition — client interpolates this smoothly
         this.setVelocity(toTarget.normalize().multiply(LAUNCH_SPEED));
         this.setNoGravity(true);
 
-        // super.tick() moves the entity by velocity and fires onEntityHit / onBlockHit
-        super.tick();
+        // Move the entity on the server using the velocity
+        this.setPosition(
+                this.getX() + this.getVelocity().x,
+                this.getY() + this.getVelocity().y,
+                this.getZ() + this.getVelocity().z
+        );
 
-        HitResult hit = ProjectileUtil.getCollision(this, this::canHit);
-        if (hit.getType() != HitResult.Type.MISS) {
-            this.onCollision(hit);
-        }
+        // Entity collision check
+        this.getEntityWorld().getOtherEntities(this, this.getBoundingBox().expand(0.5), this::canHit)
+                .stream()
+                .min(Comparator.comparingDouble(e -> e.squaredDistanceTo(this)))
+                .ifPresent(e -> onEntityHit(new net.minecraft.util.hit.EntityHitResult(e)));
     }
 
     // ── Easing functions ─────────────────────────────────────────────────
@@ -265,6 +273,7 @@ public class RockEntity extends ProjectileEntity {
     public void launch(Vec3d target) {
         this.targetPos = target;
         this.state     = State.LAUNCHED;
+        syncState(); // ← tells the client to switch to spin/fly rendering
     }
 
     public State getState() {

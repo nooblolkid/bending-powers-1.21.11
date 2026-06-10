@@ -19,6 +19,7 @@ import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.util.ActionResult;
 import net.minecraft.util.Hand;
+import net.minecraft.util.hit.HitResult;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Box;
 import net.minecraft.util.math.Vec3d;
@@ -202,24 +203,36 @@ public class BendingPowers implements ModInitializer {
     }
 
     private static void spawnRockRing(ServerPlayerEntity player, ServerWorld world) {
-        final int    COUNT       = 24;
-        final double RADIUS      = 3.0;
-        final double IDLE_HEIGHT = 1.2;
-        final int    DELAY_STEP  = 2;  // ticks between each rock rising
+        final int    COUNT      = 24;
+        final double MIN_RADIUS = 1.5;  // closest a rock can be
+        final double MAX_RADIUS = 4.0;  // furthest a rock can be
+        final double MIN_HEIGHT = 0.2;  // just above ground
+        final double MAX_HEIGHT = 3.5;  // above the player's head
 
+        net.minecraft.util.math.random.Random rand = world.getRandom();
         List<RockEntity> spawned = new ArrayList<>();
 
         for (int i = 0; i < COUNT; i++) {
-            double angle   = (Math.PI * 2.0 / COUNT) * i;
-            double rx      = player.getX() + Math.cos(angle) * RADIUS;
-            double rz      = player.getZ() + Math.sin(angle) * RADIUS;
-            Vec3d  ringPos = new Vec3d(rx, player.getY(), rz);
+            // Fully random angle — no longer evenly spaced
+            double angle  = rand.nextDouble() * Math.PI * 2.0;
 
-            RockEntity rock = new RockEntity(world, player, ringPos, IDLE_HEIGHT, i * DELAY_STEP);
+            // Random distance from player
+            double radius = MIN_RADIUS + rand.nextDouble() * (MAX_RADIUS - MIN_RADIUS);
+
+            // Random hover height — this is what creates the scattered cloud look
+            double height = MIN_HEIGHT + rand.nextDouble() * (MAX_HEIGHT - MIN_HEIGHT);
+
+            double rx = player.getX() + Math.cos(angle) * radius;
+            double rz = player.getZ() + Math.sin(angle) * radius;
+
+            Vec3d ringPos = new Vec3d(rx, player.getY(), rz);
+
+            // stagger delay still based on index so they don't all erupt at once
+            RockEntity rock = new RockEntity(world, player, ringPos, height, i * 2);
             world.spawnEntity(rock);
             spawned.add(rock);
         }
-        // Store the rock list so we can launch them later
+
         PLAYER_ROCKS.put(player.getUuid(), spawned);
     }
 
@@ -227,18 +240,42 @@ public class BendingPowers implements ModInitializer {
         if (hand != Hand.MAIN_HAND || !player.getMainHandStack().isEmpty()) return ActionResult.PASS;
         if (!player.getCommandTags().contains("earth_power") || world.isClient()) return ActionResult.PASS;
 
+        // --- BOULDER LAUNCH (unchanged) ---
         List<BoulderEntity> boulders = world.getEntitiesByType(ModEntities.BOULDER,
                 player.getBoundingBox().expand(20), b -> player.equals(b.getOwner()));
-
         if (!boulders.isEmpty()) {
             BoulderEntity boulder = boulders.get(0);
             boulder.setVelocity(player.getRotationVec(1.0f).multiply(2.5));
             boulder.velocityDirty = true;
-            // Set state to flying (1)
             boulder.getDataTracker().set(BoulderEntity.STATE, (byte) 1);
             return ActionResult.SUCCESS;
         }
+
         return ActionResult.PASS;
+    }
+
+    public static void tryLaunchRocks(ServerPlayerEntity player, World world) {
+        UUID uuid = player.getUuid();
+        List<RockEntity> rocks = PLAYER_ROCKS.getOrDefault(uuid, List.of())
+                .stream().filter(r -> !r.isRemoved()).toList();
+
+        if (rocks.isEmpty()) return;
+
+        HitResult hit = player.raycast(45.0, 1.0f, false);
+        Vec3d targetPos = hit.getType() != HitResult.Type.MISS
+                ? hit.getPos()
+                : player.getEyePos().add(player.getRotationVec(1.0f).multiply(45.0));
+
+        net.minecraft.util.math.random.Random rand = world.getRandom();
+        for (RockEntity rock : rocks) {
+            Vec3d spread = targetPos.add(
+                    (rand.nextDouble() - 0.5) * 2.0,
+                    (rand.nextDouble() - 0.5) * 1.0,
+                    (rand.nextDouble() - 0.5) * 2.0
+            );
+            rock.launch(spread);
+        }
+        PLAYER_ROCKS.remove(uuid);
     }
 
     // --- Helper Classes ---

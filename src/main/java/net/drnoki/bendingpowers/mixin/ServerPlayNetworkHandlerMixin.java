@@ -1,5 +1,6 @@
 package net.drnoki.bendingpowers.mixin;
 
+import net.drnoki.bendingpowers.BendingPowers;
 import net.drnoki.bendingpowers.entity.ModEntities;
 import net.drnoki.bendingpowers.entity.custom.BoulderEntity;
 import net.minecraft.network.packet.c2s.play.HandSwingC2SPacket;
@@ -29,12 +30,15 @@ public class ServerPlayNetworkHandlerMixin {
 
         World world = player.getEntityWorld();
 
+        // --- ROCK LAUNCH (checked first) ---
+        BendingPowers.tryLaunchRocks(player, world);
+
+        // --- BOULDER LAUNCH (unchanged) ---
         List<BoulderEntity> boulders = world.getEntitiesByType(
                 ModEntities.BOULDER,
                 player.getBoundingBox().expand(100),
                 b -> player.equals(b.getOwner())
         );
-
         if (boulders.isEmpty()) return;
 
         BoulderEntity boulder = boulders.get(0);
